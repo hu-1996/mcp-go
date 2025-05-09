@@ -323,7 +323,7 @@ func (s *HzSSEServer) handleSSE(ctx context.Context, c *app.RequestContext) {
 					select {
 					case session.eventQueue <- &sse.Event{
 						Event: "message",
-						Data:  []byte(fmt.Sprintf("data:%s\n\n", eventData)),
+						Data:  []byte(eventData),
 					}:
 						// Event queued successfully
 					case <-session.done:
@@ -356,7 +356,7 @@ func (s *HzSSEServer) handleSSE(ctx context.Context, c *app.RequestContext) {
 					messageBytes, _ := json.Marshal(message)
 					session.eventQueue <- &sse.Event{
 						Event: "message",
-						Data:  []byte(fmt.Sprintf("data:%s\n\n", messageBytes)),
+						Data:  []byte(messageBytes),
 					}
 				case <-session.done:
 					return
@@ -377,7 +377,7 @@ func (s *HzSSEServer) handleSSE(ctx context.Context, c *app.RequestContext) {
 	}
 	event := &sse.Event{
 		Event: "endpoint",
-		Data:  []byte(fmt.Sprintf("%s\r\n\r\n", endpoint)),
+		Data:  []byte(endpoint),
 	}
 	err := sc.Publish(event)
 	if err != nil {
