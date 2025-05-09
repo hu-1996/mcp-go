@@ -270,7 +270,7 @@ func (s *HzSSEServer) Shutdown(ctx context.Context) error {
 
 	if srv != nil {
 		s.sessions.Range(func(key, value interface{}) bool {
-			if session, ok := value.(*sseSession); ok {
+			if session, ok := value.(*hzSseSession); ok {
 				close(session.done)
 			}
 			s.sessions.Delete(key)
@@ -437,7 +437,7 @@ func (s *HzSSEServer) handleMessage(ctx context.Context, c *app.RequestContext) 
 		s.writeJSONRPCError(c, nil, mcp.INVALID_PARAMS, "Invalid session ID")
 		return
 	}
-	session := sessionI.(*sseSession)
+	session := sessionI.(*hzSseSession)
 
 	// Set the client context before handling the message
 	ctx = s.server.WithContext(ctx, session)
@@ -461,14 +461,20 @@ func (s *HzSSEServer) handleMessage(ctx context.Context, c *app.RequestContext) 
 
 		// Only send response if there is one (not for notifications)
 		if response != nil {
-			var message string
+			var message *sse.Event
 			if eventData, err := json.Marshal(response); err != nil {
 				// If there is an error marshalling the response, send a generic error response
 				log.Printf("failed to marshal response: %v", err)
-				message = fmt.Sprintf("event: message\ndata: {\"error\": \"internal error\",\"jsonrpc\": \"2.0\", \"id\": null}\n\n")
+				message = &sse.Event{
+					Event: "message",
+					Data:  []byte(fmt.Sprintf("{\"error\": \"internal error\",\"jsonrpc\": \"2.0\", \"id\": null}")),
+				}
 				return
 			} else {
-				message = fmt.Sprintf("event: message\ndata: %s\n\n", eventData)
+				message = &sse.Event{
+					Event: "message",
+					Data:  []byte(eventData),
+				}
 			}
 
 			// Queue the event for sending via SSE
@@ -508,7 +514,7 @@ func (s *HzSSEServer) SendEventToSession(
 	if !ok {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
-	session := sessionI.(*sseSession)
+	session := sessionI.(*hzSseSession)
 
 	eventData, err := json.Marshal(event)
 	if err != nil {
@@ -517,7 +523,10 @@ func (s *HzSSEServer) SendEventToSession(
 
 	// Queue the event for sending via SSE
 	select {
-	case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
+	case session.eventQueue <- &sse.Event{
+		Event: "message",
+		Data:  []byte(eventData),
+	}:
 		return nil
 	case <-session.done:
 		return fmt.Errorf("session closed")
