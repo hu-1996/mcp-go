@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/google/uuid"
+	"github.com/hertz-contrib/sse"
 	"github.com/hu-1996/mcp-go/mcp"
 )
 
@@ -22,7 +24,7 @@ import (
 type hzSseSession struct {
 	writer              *app.RequestContext
 	done                chan struct{}
-	eventQueue          chan string // Channel for queuing events
+	eventQueue          chan *sse.Event // Channel for queuing events
 	sessionID           string
 	requestID           atomic.Int64
 	notificationChannel chan mcp.JSONRPCNotification
@@ -297,7 +299,7 @@ func (s *HzSSEServer) handleSSE(ctx context.Context, c *app.RequestContext) {
 	session := &hzSseSession{
 		writer:              c,
 		done:                make(chan struct{}),
-		eventQueue:          make(chan string, 100), // Buffer for events
+		eventQueue:          make(chan *sse.Event, 100), // Buffer for events
 		sessionID:           sessionID,
 		notificationChannel: make(chan mcp.JSONRPCNotification, 100),
 	}
@@ -319,7 +321,10 @@ func (s *HzSSEServer) handleSSE(ctx context.Context, c *app.RequestContext) {
 				eventData, err := json.Marshal(notification)
 				if err == nil {
 					select {
-					case session.eventQueue <- fmt.Sprintf("event: message\ndata: %s\n\n", eventData):
+					case session.eventQueue <- &sse.Event{
+						Event: "message",
+						Data:  []byte(fmt.Sprintf("data:%s\n\n", eventData)),
+					}:
 						// Event queued successfully
 					case <-session.done:
 						return
@@ -349,8 +354,10 @@ func (s *HzSSEServer) handleSSE(ctx context.Context, c *app.RequestContext) {
 						},
 					}
 					messageBytes, _ := json.Marshal(message)
-					pingMsg := fmt.Sprintf("event: message\ndata:%s\n\n", messageBytes)
-					session.eventQueue <- pingMsg
+					session.eventQueue <- &sse.Event{
+						Event: "message",
+						Data:  []byte(fmt.Sprintf("data:%s\n\n", messageBytes)),
+					}
 				case <-session.done:
 					return
 				case <-ctx.Done():
@@ -360,21 +367,32 @@ func (s *HzSSEServer) handleSSE(ctx context.Context, c *app.RequestContext) {
 		}()
 	}
 
+	c.SetStatusCode(http.StatusOK)
+	sc := sse.NewStream(c)
+
 	// Send the initial endpoint event
 	endpoint := s.GetMessageEndpointForClient(ctx, c, sessionID)
 	if s.appendQueryToMessageEndpoint && len(c.QueryArgs().String()) > 0 {
 		endpoint += "&" + c.QueryArgs().String()
 	}
-	c.WriteString(fmt.Sprintf("event: endpoint\ndata: %s\r\n\r\n", endpoint))
-	c.Flush()
+	event := &sse.Event{
+		Event: "endpoint",
+		Data:  []byte(fmt.Sprintf("%s\r\n\r\n", endpoint)),
+	}
+	err := sc.Publish(event)
+	if err != nil {
+		return
+	}
 
 	// Main event loop - this runs in the HTTP handler goroutine
 	for {
 		select {
 		case event := <-session.eventQueue:
 			// Write the event to the response
-			c.WriteString(event)
-			c.Flush()
+			err := sc.Publish(event)
+			if err != nil {
+				return
+			}
 		case <-ctx.Done():
 			close(session.done)
 			return
