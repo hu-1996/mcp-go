@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/hu-1996/mcp-go/mcp"
 )
 
 // startMockSSEEchoServer starts a test HTTP server that implements

@@ -15,7 +15,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/google/uuid"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/hu-1996/mcp-go/mcp"
 )
 
 // hzSseSession represents an active SSE connection.

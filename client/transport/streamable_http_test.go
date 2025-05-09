@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/hu-1996/mcp-go/mcp"
 )
 
 // startMockStreamableHTTPServer starts a test HTTP server that implements
